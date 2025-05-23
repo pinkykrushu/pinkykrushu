@@ -4,7 +4,4 @@ maintainer_email 'your.email@example.com'
 license 'All Rights Reserved'
 description 'Backs up AMIs with encrypted root volumes to S3'
 version '0.1.0'
-chef_version '>= 14.0'
-
-depends 'aws'
-depends 'mail' 
+chef_version '>= 14.0' 

@@ -1,0 +1,10 @@
+# AWS credentials
+aws:
+  access_key_id: YOUR_ACCESS_KEY_ID
+  secret_access_key: YOUR_SECRET_ACCESS_KEY
+
+# S3 bucket for AMI backups
+s3_bucket: s3-trp-ami-backup
+
+# Optional proxy configuration
+proxy_url: http://proxy.example.com:8080  # Set to null if no proxy is needed 
