@@ -1,0 +1,20 @@
+{
+    "ami_details": {
+        "created_by": "{{env `USER`}}",
+        "creation_date": "{{timestamp}}",
+        "purpose": "EKS Worker Node",
+        "base_ami": "{{ .SourceAMIName }}",
+        "packer_version": "{{packer_version}}",
+        "build_timestamp": "{{timestamp}}",
+        "eks_version": "${var.eks_version}",
+        "security_tools": {
+            "tanium_client": "staged",
+            "crowdstrike_agent": "staged",
+            "qualys_agent": "staged"
+        },
+        "compliance": {
+            "cis_level": "1",
+            "cis_version": "1.0.0"
+        }
+    }
+} 

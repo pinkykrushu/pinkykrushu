@@ -1,0 +1,113 @@
+#cloud-config
+write_files:
+  - path: /opt/configure_agents.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      
+      # Set error handling
+      set -e
+      set -o pipefail
+      
+      # Log file setup
+      LOGFILE="/var/log/agent_configuration.log"
+      exec 1> >(tee -a "$LOGFILE") 2>&1
+      
+      echo "Starting security agents configuration at $(date)"
+      
+      # Function for logging
+      log() {
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+      }
+      
+      # Check if agents are installed
+      if [ ! -f "/opt/security_agents_installed" ]; then
+          log "Security agents are not installed. Exiting."
+          exit 1
+      }
+      
+      # Configure and start Tanium Client
+      log "Configuring Tanium Client..."
+      TANIUM_SERVER="${tanium_server}"
+      TANIUM_SERVER_PORT="${tanium_port}"
+      TANIUM_SERVER_NAME="${tanium_servername}"
+      
+      cat > /opt/Tanium/TaniumClient/TaniumClient.ini <<EOF
+      ServerName=${TANIUM_SERVER_NAME}
+      ServerNameList=${TANIUM_SERVER}
+      ServerPort=${TANIUM_SERVER_PORT}
+      LogVerbosityLevel=1
+      EOF
+      
+      chmod 644 /opt/Tanium/TaniumClient/TaniumClient.ini
+      systemctl enable taniumclient
+      systemctl start taniumclient
+      
+      # Configure and start CrowdStrike Falcon
+      log "Configuring CrowdStrike Falcon..."
+      FALCON_CID="${falcon_cid}"
+      FALCON_TAGS="${falcon_tags}"
+      
+      /opt/CrowdStrike/falconctl -s --cid="${FALCON_CID}" --tags="${FALCON_TAGS}"
+      systemctl enable falcon-sensor
+      systemctl start falcon-sensor
+      
+      # Configure and start Qualys Cloud Agent
+      log "Configuring Qualys Cloud Agent..."
+      QUALYS_ACTIVATION_ID="${qualys_activation_id}"
+      QUALYS_CUSTOMER_ID="${qualys_customer_id}"
+      
+      /usr/local/qualys/cloud-agent/bin/qualys-cloud-agent.sh ActivationId="${QUALYS_ACTIVATION_ID}" CustomerId="${QUALYS_CUSTOMER_ID}"
+      systemctl enable qualys-cloud-agent
+      systemctl start qualys-cloud-agent
+      
+      # Verify services are running
+      log "Verifying services..."
+      
+      services=("taniumclient" "falcon-sensor" "qualys-cloud-agent")
+      for service in "${services[@]}"; do
+          if systemctl is-active --quiet "$service"; then
+              log "$service is running"
+          else
+              log "WARNING: $service is not running"
+          fi
+      done
+      
+      log "Security agents configuration completed at $(date)"
+
+runcmd:
+  - |
+    # Set variables from instance tags or SSM parameters
+    INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+    REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
+    
+    # Get configuration from AWS Systems Manager Parameter Store
+    aws_params=$(aws ssm get-parameters-by-path \
+      --path "/security/agents/${REGION}" \
+      --with-decryption \
+      --region ${REGION})
+    
+    # Extract parameters
+    tanium_server=$(echo "$aws_params" | jq -r '.Parameters[] | select(.Name=="/security/agents/'${REGION}'/tanium_server").Value')
+    tanium_port=$(echo "$aws_params" | jq -r '.Parameters[] | select(.Name=="/security/agents/'${REGION}'/tanium_port").Value')
+    tanium_servername=$(echo "$aws_params" | jq -r '.Parameters[] | select(.Name=="/security/agents/'${REGION}'/tanium_servername").Value')
+    falcon_cid=$(echo "$aws_params" | jq -r '.Parameters[] | select(.Name=="/security/agents/'${REGION}'/falcon_cid").Value')
+    falcon_tags=$(aws ec2 describe-tags --filters "Name=resource-id,Values=${INSTANCE_ID}" --region ${REGION} | jq -r '.Tags[] | select(.Key=="falcon_tags").Value')
+    qualys_activation_id=$(echo "$aws_params" | jq -r '.Parameters[] | select(.Name=="/security/agents/'${REGION}'/qualys_activation_id").Value')
+    qualys_customer_id=$(echo "$aws_params" | jq -r '.Parameters[] | select(.Name=="/security/agents/'${REGION}'/qualys_customer_id").Value')
+    
+    # Export variables for the configuration script
+    export tanium_server tanium_port tanium_servername falcon_cid falcon_tags qualys_activation_id qualys_customer_id
+    
+    # Run configuration script
+    /opt/configure_agents.sh
+
+# Install required packages
+packages:
+  - jq
+  - aws-cli
+
+# Set permissions for AWS CLI
+system_info:
+  default_user:
+    groups: [adm, systemd-journal] 

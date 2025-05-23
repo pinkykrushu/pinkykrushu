@@ -1,0 +1,123 @@
+name = "rhel8-cis"
+description = "RHEL 8 CIS-compliant image blueprint"
+version = "1.0.0"
+modules = []
+groups = []
+
+[[packages]]
+name = "audit"
+version = "*"
+
+[[packages]]
+name = "rsyslog"
+version = "*"
+
+[[packages]]
+name = "chrony"
+version = "*"
+
+[[packages]]
+name = "policycoreutils"
+version = "*"
+
+[[packages]]
+name = "selinux-policy-targeted"
+version = "*"
+
+[[packages]]
+name = "lvm2"
+version = "*"
+
+[customizations]
+hostname = "rhel8-cis"
+
+[customizations.kernel]
+append = "audit=1 audit_backlog_limit=8192"
+
+[customizations.firewall]
+enabled = false
+
+[customizations.services]
+enabled = ["auditd", "rsyslog", "chronyd"]
+disabled = ["telnet", "rsh", "rlogin", "rexec"]
+
+[[customizations.user]]
+name = "ec2-user"
+description = "EC2 Default User"
+groups = ["wheel"]
+key = "%AUTHORIZED_KEY%"
+
+[customizations.sshd]
+permitrootlogin = "yes"
+passwordauthentication = "yes"
+
+[customizations.root]
+password = "%ROOT_PASSWORD%"
+
+[customizations.disk]
+[customizations.disk.layout]
+device = "/dev/sda"
+type = "lvm"
+
+[[customizations.disk.layout.partitions]]
+name = "/boot"
+size = "1024"
+type = "xfs"
+label = "BOOT"
+
+[[customizations.disk.layout.partitions]]
+name = "pv.01"
+type = "pv"
+
+[customizations.disk.layout.volume_groups]
+name = "vg_root"
+devices = ["pv.01"]
+
+[[customizations.disk.layout.volume_groups.logical_volumes]]
+name = "lv_root"
+size = "10240"
+type = "xfs"
+mount_point = "/"
+label = "ROOT"
+
+[[customizations.disk.layout.volume_groups.logical_volumes]]
+name = "lv_var"
+size = "5120"
+type = "xfs"
+mount_point = "/var"
+label = "VAR"
+
+[[customizations.disk.layout.volume_groups.logical_volumes]]
+name = "lv_tmp"
+size = "2048"
+type = "xfs"
+mount_point = "/tmp"
+label = "TMP"
+
+[[customizations.disk.layout.volume_groups.logical_volumes]]
+name = "lv_home"
+size = "1024"
+type = "xfs"
+mount_point = "/home"
+label = "HOME"
+
+[[customizations.script]]
+script = """#!/bin/bash
+# Set password policies
+sed -i 's/^PASS_MAX_DAYS.*/PASS_MAX_DAYS 90/' /etc/login.defs
+sed -i 's/^PASS_MIN_DAYS.*/PASS_MIN_DAYS 7/' /etc/login.defs
+sed -i 's/^PASS_MIN_LEN.*/PASS_MIN_LEN 14/' /etc/login.defs
+
+# Configure audit rules
+cat > /etc/audit/rules.d/cis.rules << 'EOF'
+-w /etc/passwd -p wa -k identity
+-w /etc/group -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/sudoers -p wa -k identity
+-w /var/log/lastlog -p wa -k logins
+-w /var/run/faillock -p wa -k logins
+EOF
+
+# Run cleanup script
+bash /usr/local/bin/cleanup.sh
+""" 
